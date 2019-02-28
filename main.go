@@ -41,14 +41,18 @@ var CODE_SHIM string = `{{if .StreamOutput}}
 type direct{{.Service}}{{.Name}} struct {
   ctx context.Context
   c   chan *{{.OutputType}}
+  e   error
 }
 
 func (dsm *direct{{.Service}}{{.Name}}) Recv() (*{{.OutputType}}, error) {
 	value, ok := <-dsm.c
 	if !ok {
+    if dsm.e != nil {
+      return nil, dsm.e
+    }
 		return nil, io.EOF
 	}
-	return value, nil
+	return value, dsm.e
 }
 func (dsm *direct{{.Service}}{{.Name}}) Send(a *{{.OutputType}}) error {
 	dsm.c <- a
@@ -69,10 +73,10 @@ func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return n
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
 func (dir *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.InputType}}, opts ...grpc.CallOption) ({{.Service}}_{{.Name}}Client, error) {
-	w := &direct{{.Service}}{{.Name}}{ctx, make(chan *{{.OutputType}}, 100)}
+	w := &direct{{.Service}}{{.Name}}{ctx, make(chan *{{.OutputType}}, 100), nil}
 	go func() {
-		dir.server.{{.Name}}(in, w)
-		w.close()
+    defer w.close()
+		w.e = dir.server.{{.Name}}(in, w)
 	}()
 	return w, nil
 }
