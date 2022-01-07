@@ -23,17 +23,51 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+type DirectOption func(directClientBase)
+
+type directClientBase interface {
+  setUnaryInterceptor(grpc.UnaryServerInterceptor)
+  setStreamInterceptor(grpc.StreamServerInterceptor)
+}
+
+func DirectUnaryInterceptor(g grpc.UnaryServerInterceptor) func(directClientBase) {
+  return func(d directClientBase) {
+    d.setUnaryInterceptor(g)
+  }
+}
+
+func DirectStreamInterceptor(g grpc.StreamServerInterceptor) func(directClientBase) {
+  return func(d directClientBase) {
+    d.setStreamInterceptor(g)
+  }
+}
+
 `
 
 var CODE_SERVICE string = `
 // {{.Service}}DirectClient is a shim to connect {{.Service}} client directly server
 type {{.Service}}DirectClient struct {
+  unaryServerInt grpc.UnaryServerInterceptor
+  streamServerInt grpc.StreamServerInterceptor
 	server {{.Service}}Server
 }
  // New{{.Service}}DirectClient creates new {{.Service}}DirectClient
-func New{{.Service}}DirectClient(server {{.Service}}Server) *{{.Service}}DirectClient {
-	return &{{.Service}}DirectClient{server}
+func New{{.Service}}DirectClient(server {{.Service}}Server, opts ...DirectOption) *{{.Service}}DirectClient {
+	o := &{{.Service}}DirectClient{server:server}
+  for _, opt := range opts {
+    opt(o)
+  }
+  return o
 }
+
+func (shim *{{.Service}}DirectClient) setUnaryInterceptor(a grpc.UnaryServerInterceptor) {
+  shim.unaryServerInt = a
+}
+
+func (shim *{{.Service}}DirectClient) setStreamInterceptor(a grpc.StreamServerInterceptor) {
+  shim.streamServerInt = a
+}
+
 `
 
 var CODE_SHIM string = `{{if .StreamOutput}}
@@ -136,7 +170,19 @@ func (dir *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, opts ...grpc
 {{else}}
 //{{.Name}} shim
 func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.InputType}}, opts ...grpc.CallOption) (*{{.OutputType}}, error) {
-	return shim.server.{{.Name}}(ctx, in)
+  md, _ := metadata.FromOutgoingContext(ctx)
+  ictx := metadata.NewIncomingContext(ctx, md)
+  if shim.unaryServerInt != nil {
+    handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+  		return shim.server.{{.Name}}(ctx, req.(*{{.InputType}}))
+  	}
+    o, err := shim.unaryServerInt(ictx, in, nil, handler)
+    if o == nil {
+      return nil, err
+    }
+    return o.(*{{.OutputType}}), err
+  }
+	return shim.server.{{.Name}}(ictx, in)
 }{{end}}
 `
 
