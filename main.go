@@ -1,15 +1,15 @@
 package main
 
-
 import (
-  "os"
-  "log"
-  "bytes"
-  "strings"
-  "io/ioutil"
-  "text/template"
-  "github.com/golang/protobuf/proto"
-  plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
+	"bytes"
+	"io/ioutil"
+	"log"
+	"os"
+	"strings"
+	"text/template"
+
+	"github.com/golang/protobuf/proto"
+	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
 )
 
 var CODE_HEADER string = `
@@ -106,15 +106,31 @@ func (dsm *direct{{.Service}}{{.Name}}) SendMsg(m interface{}) error  { return n
 func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
-func (dir *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.InputType}}, opts ...grpc.CallOption) ({{.Service}}_{{.Name}}Client, error) {
-	w := &direct{{.Service}}{{.Name}}{ctx, make(chan *{{.OutputType}}, 100), nil}
+func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.InputType}}, opts ...grpc.CallOption) ({{.Service}}_{{.Name}}Client, error) {
+  md, _ := metadata.FromOutgoingContext(ctx)
+  ictx := metadata.NewIncomingContext(ctx, md)
+
+	w := &direct{{.Service}}{{.Name}}{ictx, make(chan *{{.OutputType}}, 100), nil}
+  if shim.streamServerInt != nil {
+    go func() {
+      defer w.close()
+      info := grpc.StreamServerInfo{
+        FullMethod: "/{{.Package}}.{{.Service}}/{{.Name}}",
+        IsServerStream: true,
+      }
+      shim.streamServerInt(shim.server.{{.Name}}, w, &info, _{{.Service}}_{{.Name}}_Handler)
+    } ()
+    return w, nil
+  }
 	go func() {
     defer w.close()
-		w.e = dir.server.{{.Name}}(in, w)
+		w.e = shim.server.{{.Name}}(in, w)
 	}()
 	return w, nil
 }
 {{else if .StreamInput}}
+// Streaming data 'server' shim. Provides the Send/Recv funcs expected by the
+// user server code when dealing with a streaming input
 //{{.Name}} streaming input shim
 type direct{{.Service}}{{.Name}} struct {
   ctx context.Context
@@ -160,10 +176,20 @@ func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return n
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
 
-func (dir *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, opts ...grpc.CallOption) ({{.Service}}_{{.Name}}Client, error) {
-	w := &direct{{.Service}}{{.Name}}{ctx, make(chan *{{.InputType}}, 100), make(chan *{{.OutputType}}, 3)}
+func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, opts ...grpc.CallOption) ({{.Service}}_{{.Name}}Client, error) {
+  md, _ := metadata.FromOutgoingContext(ctx)
+  ictx := metadata.NewIncomingContext(ctx, md)
+  w := &direct{{.Service}}{{.Name}}{ictx, make(chan *{{.InputType}}, 100), make(chan *{{.OutputType}}, 3)}
+  if shim.streamServerInt != nil {
+    info := grpc.StreamServerInfo{
+      FullMethod: "/{{.Package}}.{{.Service}}/{{.Name}}",
+      IsClientStream: true,
+    }
+    go shim.streamServerInt(shim.server.{{.Name}}, w, &info, _{{.Service}}_{{.Name}}_Handler)
+    return w, nil
+  }
 	go func() {
-		dir.server.{{.Name}}(w)
+		shim.server.{{.Name}}(w)
 	}()
 	return w, nil
 }
@@ -176,7 +202,10 @@ func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.Inpu
     handler := func(ctx context.Context, req interface{}) (interface{}, error) {
   		return shim.server.{{.Name}}(ctx, req.(*{{.InputType}}))
   	}
-    o, err := shim.unaryServerInt(ictx, in, nil, handler)
+    info := grpc.UnaryServerInfo{
+      FullMethod: "/{{.Package}}.{{.Service}}/{{.Name}}",
+    }
+    o, err := shim.unaryServerInt(ictx, in, &info, handler)
     if o == nil {
       return nil, err
     }
@@ -187,97 +216,99 @@ func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.Inpu
 `
 
 func contains(c []string, a string) bool {
-  for _, i := range c {
-    if a == i {
-      return true
-    }
-  }
-  return false
+	for _, i := range c {
+		if a == i {
+			return true
+		}
+	}
+	return false
 }
 
 type headerDesc struct {
-  Package string
+	Package string
 }
 
 type serviceDesc struct {
-  Service string
+	Service string
 }
 
 type methodDesc struct {
-  Service string
-  Name string
-  InputType string
-  OutputType string
-  StreamOutput bool
-  StreamInput bool
+	Package      string
+	Service      string
+	Name         string
+	InputType    string
+	OutputType   string
+	StreamOutput bool
+	StreamInput  bool
 }
 
 func cleanProtoType(name string, p string) string {
-  if strings.HasPrefix(name, "." + p + ".") {
-    return name[len(p) + 2:]
-  }
-  return name
+	if strings.HasPrefix(name, "."+p+".") {
+		return name[len(p)+2:]
+	}
+	return name
 }
 
 func boolPtrDefaultFalse(b *bool) bool {
-  if b == nil {
-    return false
-  }
-  return *b
+	if b == nil {
+		return false
+	}
+	return *b
 }
 
 func main() {
 	input, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
-    log.Printf("failed to read code generator request: %v", err)
+		log.Printf("failed to read code generator request: %v", err)
 		return
 	}
 	req := new(plugin.CodeGeneratorRequest)
 	if err = proto.Unmarshal(input, req); err != nil {
 		log.Printf("failed to unmarshal code generator request: %v", err)
-    return
+		return
 	}
 
-  headerTemplate, _ := template.New("header").Parse(CODE_HEADER)
-  serviceTemplate, _ := template.New("service").Parse(CODE_SERVICE)
-  shimTemplate, err := template.New("shim").Parse(CODE_SHIM)
-  if err != nil {
-    log.Fatal(err)
-  }
+	headerTemplate, _ := template.New("header").Parse(CODE_HEADER)
+	serviceTemplate, _ := template.New("service").Parse(CODE_SERVICE)
+	shimTemplate, err := template.New("shim").Parse(CODE_SHIM)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-  out := []*plugin.CodeGeneratorResponse_File{}
-  for _, file := range req.ProtoFile {
-    if contains(req.FileToGenerate, *file.Name) {
-      //log.Printf("File: %s", *file.Name)
-      text := bytes.NewBufferString("")
-      headerTemplate.Execute(text, headerDesc{Package:*file.Package})
-      for _, service := range file.Service {
-        //log.Printf("Service: %s", *service.Name)
-        serviceTemplate.Execute(text, serviceDesc{Service:*service.Name})
-        for _, method := range service.Method {
-          //log.Printf(" method: %s", method)
-          err := shimTemplate.Execute(text, methodDesc{
-            Service:*service.Name, Name:*method.Name,
-            InputType:cleanProtoType(*method.InputType,*file.Package),
-            OutputType:cleanProtoType(*method.OutputType,*file.Package),
-            StreamOutput:boolPtrDefaultFalse(method.ServerStreaming),
-            StreamInput:boolPtrDefaultFalse(method.ClientStreaming),
-          })
-          if err != nil {
-            log.Printf("Error: %s", err)
-          }
-        }
-      }
-      n := strings.Replace(*file.Name, ".proto", ".pb.dgw.go", -1)
-      t := text.String()
-      f := &plugin.CodeGeneratorResponse_File{Name:&n, Content:&t}
-      out = append(out, f)
-    }
-  }
+	out := []*plugin.CodeGeneratorResponse_File{}
+	for _, file := range req.ProtoFile {
+		if contains(req.FileToGenerate, *file.Name) {
+			//log.Printf("File: %s", *file.Name)
+			text := bytes.NewBufferString("")
+			headerTemplate.Execute(text, headerDesc{Package: *file.Package})
+			for _, service := range file.Service {
+				//log.Printf("Service: %s", *service.Name)
+				serviceTemplate.Execute(text, serviceDesc{Service: *service.Name})
+				for _, method := range service.Method {
+					//log.Printf(" method: %s", method)
+					err := shimTemplate.Execute(text, methodDesc{
+						Package: *file.Package,
+						Service: *service.Name, Name: *method.Name,
+						InputType:    cleanProtoType(*method.InputType, *file.Package),
+						OutputType:   cleanProtoType(*method.OutputType, *file.Package),
+						StreamOutput: boolPtrDefaultFalse(method.ServerStreaming),
+						StreamInput:  boolPtrDefaultFalse(method.ClientStreaming),
+					})
+					if err != nil {
+						log.Printf("Error: %s", err)
+					}
+				}
+			}
+			n := strings.Replace(*file.Name, ".proto", ".pb.dgw.go", -1)
+			t := text.String()
+			f := &plugin.CodeGeneratorResponse_File{Name: &n, Content: &t}
+			out = append(out, f)
+		}
+	}
 
-  resp := &plugin.CodeGeneratorResponse{File: out}
+	resp := &plugin.CodeGeneratorResponse{File: out}
 
-  buf, err := proto.Marshal(resp)
+	buf, err := proto.Marshal(resp)
 	if err != nil {
 		log.Fatal(err)
 	}
