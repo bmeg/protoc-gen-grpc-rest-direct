@@ -23,6 +23,9 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+// use io module, incase generated sections don't to avoid 'import not used' error
+var _ = io.EOF 
+
 type DirectOption func(directClientBase)
 
 type directClientBase interface {
@@ -71,7 +74,8 @@ func (shim *{{.Service}}DirectClient) setStreamInterceptor(a grpc.StreamServerIn
 `
 
 var CODE_SHIM string = `{{if .StreamOutput}}
-//{{.Name}} streaming output shim
+
+/* Start {{.Service}}{{.Name}} call output server  */
 type direct{{.Service}}{{.Name}} struct {
   ctx context.Context
   c   chan *{{.OutputType}}
@@ -106,6 +110,8 @@ func (dsm *direct{{.Service}}{{.Name}}) SendMsg(m interface{}) error  { return n
 func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
+/* End {{.Service}}{{.Name}} call output server  */
+
 func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.InputType}}, opts ...grpc.CallOption) ({{.Service}}_{{.Name}}Client, error) {
   md, _ := metadata.FromOutgoingContext(ctx)
   ictx := metadata.NewIncomingContext(ctx, md)
@@ -131,7 +137,8 @@ func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.Inpu
 {{else if .StreamInput}}
 // Streaming data 'server' shim. Provides the Send/Recv funcs expected by the
 // user server code when dealing with a streaming input
-//{{.Name}} streaming input shim
+
+/* Start {{.Service}}{{.Name}} streaming input server */
 type direct{{.Service}}{{.Name}} struct {
   ctx context.Context
   c   chan *{{.InputType}}
@@ -175,6 +182,8 @@ func (dsm *direct{{.Service}}{{.Name}}) SendMsg(m interface{}) error  { return n
 func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
+/* End {{.Service}}{{.Name}} streaming input server */
+
 
 func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, opts ...grpc.CallOption) ({{.Service}}_{{.Name}}Client, error) {
   md, _ := metadata.FromOutgoingContext(ctx)
