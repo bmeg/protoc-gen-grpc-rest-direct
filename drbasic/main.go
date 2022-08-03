@@ -30,15 +30,14 @@ func (bs *BasicServer) QueryPost(ctx context.Context, in *drtest.InputMessage) (
 }
 
 func (bs *BasicServer) QueryStreamOut(in *drtest.InputMessage, srv drtest.DirectService_QueryStreamOutServer) error {
-	for i := 0; i < 10; i++ {
-		fmt.Printf("Sending: %d\n", i)
+	for i := 0; i < 500; i++ {
 		srv.Send(&drtest.OutputMessage{Message: fmt.Sprintf("%s : %d", in.Message, i)})
 	}
 	return nil
 }
 
 func (bs *BasicServer) QueryStreamIn(srv drtest.DirectService_QueryStreamInServer) error {
-	fmt.Printf("Starting input stream\n")
+	//fmt.Printf("Starting input stream\n")
 	count := 0
 	for {
 		msg, err := srv.Recv()
@@ -46,10 +45,10 @@ func (bs *BasicServer) QueryStreamIn(srv drtest.DirectService_QueryStreamInServe
 			break
 		}
 		_ = msg
-		fmt.Printf("Input Stream got: %s\n", msg.Message)
+		//fmt.Printf("Input Stream got: %s\n", msg.Message)
 		count++
 	}
-	fmt.Printf("in stream closing\n")
+	//fmt.Printf("in stream closing: %d\n", count)
 	return srv.SendAndClose(&drtest.OutputMessage{Message: fmt.Sprintf("count : %d", count)})
 }
 

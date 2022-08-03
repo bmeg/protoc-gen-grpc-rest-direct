@@ -92,10 +92,16 @@ func (dsm *direct{{.Service}}{{.Name}}) Recv() (*{{.OutputType}}, error) {
 	}
 	return value, dsm.e
 }
+
 func (dsm *direct{{.Service}}{{.Name}}) Send(a *{{.OutputType}}) error {
-	dsm.c <- a
-	return nil
+	return dsm.SendMsg(a)
 }
+
+func (dsm *direct{{.Service}}{{.Name}}) SendMsg(m interface{}) error  { 
+	dsm.c <- m.(*{{.OutputType}})
+	return nil 
+}
+
 func (dsm *direct{{.Service}}{{.Name}}) close() {
 	close(dsm.c)
 }
@@ -106,7 +112,6 @@ func (dsm *direct{{.Service}}{{.Name}}) CloseSend() error             { return n
 func (dsm *direct{{.Service}}{{.Name}}) SetTrailer(metadata.MD)       {}
 func (dsm *direct{{.Service}}{{.Name}}) SetHeader(metadata.MD) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) SendHeader(metadata.MD) error { return nil }
-func (dsm *direct{{.Service}}{{.Name}}) SendMsg(m interface{}) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
@@ -178,8 +183,17 @@ func (dsm *direct{{.Service}}{{.Name}}) CloseSend() error             { close(ds
 func (dsm *direct{{.Service}}{{.Name}}) SetTrailer(metadata.MD)       {}
 func (dsm *direct{{.Service}}{{.Name}}) SetHeader(metadata.MD) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) SendHeader(metadata.MD) error { return nil }
-func (dsm *direct{{.Service}}{{.Name}}) SendMsg(m interface{}) error  { return nil }
-func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return nil }
+func (dsm *direct{{.Service}}{{.Name}}) SendMsg(m interface{}) error  { dsm.out <- m.(*{{.OutputType}}); return nil }
+
+func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { 
+	t, err := dsm.Recv()
+	mPtr := m.(*{{.InputType}}) 
+	if t != nil {
+    	*mPtr = *t
+	}
+	return err
+}
+
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
 /* End {{.Service}}{{.Name}} streaming input server */
