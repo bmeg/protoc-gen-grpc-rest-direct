@@ -124,7 +124,7 @@ func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.Inpu
         FullMethod: "/{{.Package}}.{{.Service}}/{{.Name}}",
         IsServerStream: true,
       }
-      shim.streamServerInt(shim.server.{{.Name}}, w, &info, _{{.Service}}_{{.Name}}_Handler)
+      shim.streamServerInt(shim.server, w, &info, _{{.Service}}_{{.Name}}_Handler)
     } ()
     return w, nil
   }
@@ -169,12 +169,12 @@ func (dsm *direct{{.Service}}{{.Name}}) SendAndClose(o *{{.OutputType}}) error {
 }
 
 func (dsm *direct{{.Service}}{{.Name}}) CloseAndRecv() (*{{.OutputType}}, error) {
-  close(dsm.c)
+  //close(dsm.c)
   out := <- dsm.out
   return out, nil
 }
 
-func (dsm *direct{{.Service}}{{.Name}}) CloseSend() error             { return nil }
+func (dsm *direct{{.Service}}{{.Name}}) CloseSend() error             { close(dsm.c); return nil }
 func (dsm *direct{{.Service}}{{.Name}}) SetTrailer(metadata.MD)       {}
 func (dsm *direct{{.Service}}{{.Name}}) SetHeader(metadata.MD) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) SendHeader(metadata.MD) error { return nil }
@@ -194,7 +194,7 @@ func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, opts ...grp
       FullMethod: "/{{.Package}}.{{.Service}}/{{.Name}}",
       IsClientStream: true,
     }
-    go shim.streamServerInt(shim.server.{{.Name}}, w, &info, _{{.Service}}_{{.Name}}_Handler)
+    go shim.streamServerInt(shim.server, w, &info, _{{.Service}}_{{.Name}}_Handler)
     return w, nil
   }
 	go func() {

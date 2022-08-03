@@ -45,7 +45,8 @@ func (bs *BasicServer) QueryStreamIn(srv drtest.DirectService_QueryStreamInServe
 		if err == io.EOF {
 			break
 		}
-		fmt.Printf("Got %s\n", msg.Message)
+		_ = msg
+		fmt.Printf("Input Stream got: %s\n", msg.Message)
 		count++
 	}
 	fmt.Printf("in stream closing\n")
@@ -95,7 +96,11 @@ func main() {
 
 	grpcMux := runtime.NewServeMux(runtime.WithMarshalerOption("*/*", &marsh))
 
-	err = drtest.RegisterDirectServiceHandlerClient(ctx, grpcMux, drtest.NewDirectServiceDirectClient(server))
+	err = drtest.RegisterDirectServiceHandlerClient(ctx, grpcMux,
+		drtest.NewDirectServiceDirectClient(server,
+			drtest.DirectUnaryInterceptor(unaryAuthInterceptor()),
+			drtest.DirectStreamInterceptor(streamAuthInterceptor()),
+		))
 	if err != nil {
 		fmt.Printf("registering query endpoint: %v", err)
 		return
