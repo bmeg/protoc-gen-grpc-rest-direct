@@ -36,6 +36,13 @@ func (bs *BasicServer) QueryStreamOut(in *drtest.InputMessage, srv drtest.Direct
 	return nil
 }
 
+func (bs *BasicServer) QueryPostStreamOut(in *drtest.InputMessage, srv drtest.DirectService_QueryPostStreamOutServer) error {
+	for i := 0; i < 500; i++ {
+		srv.Send(&drtest.OutputMessage{Message: fmt.Sprintf("%s : %d", in.Message, i)})
+	}
+	return nil
+}
+
 func (bs *BasicServer) QueryStreamIn(srv drtest.DirectService_QueryStreamInServer) error {
 	//fmt.Printf("Starting input stream\n")
 	count := 0

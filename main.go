@@ -79,6 +79,7 @@ var CODE_SHIM string = `{{if .StreamOutput}}
 type direct{{.Service}}{{.Name}} struct {
   ctx context.Context
   c   chan *{{.OutputType}}
+  in  *{{.InputType}}
   e   error
 }
 
@@ -112,7 +113,11 @@ func (dsm *direct{{.Service}}{{.Name}}) CloseSend() error             { return n
 func (dsm *direct{{.Service}}{{.Name}}) SetTrailer(metadata.MD)       {}
 func (dsm *direct{{.Service}}{{.Name}}) SetHeader(metadata.MD) error  { return nil }
 func (dsm *direct{{.Service}}{{.Name}}) SendHeader(metadata.MD) error { return nil }
-func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { return nil }
+func (dsm *direct{{.Service}}{{.Name}}) RecvMsg(m interface{}) error  { 
+	mPtr := m.(*{{.InputType}})
+	*mPtr = *dsm.in
+	return nil
+}
 func (dsm *direct{{.Service}}{{.Name}}) Header() (metadata.MD, error) { return nil, nil }
 func (dsm *direct{{.Service}}{{.Name}}) Trailer() metadata.MD         { return nil }
 /* End {{.Service}}{{.Name}} call output server  */
@@ -121,7 +126,7 @@ func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.Inpu
   md, _ := metadata.FromOutgoingContext(ctx)
   ictx := metadata.NewIncomingContext(ctx, md)
 
-	w := &direct{{.Service}}{{.Name}}{ictx, make(chan *{{.OutputType}}, 100), nil}
+	w := &direct{{.Service}}{{.Name}}{ictx, make(chan *{{.OutputType}}, 100), in, nil}
   if shim.streamServerInt != nil {
     go func() {
       defer w.close()
@@ -129,7 +134,7 @@ func (shim *{{.Service}}DirectClient) {{.Name}}(ctx context.Context, in *{{.Inpu
         FullMethod: "/{{.Package}}.{{.Service}}/{{.Name}}",
         IsServerStream: true,
       }
-      shim.streamServerInt(shim.server, w, &info, _{{.Service}}_{{.Name}}_Handler)
+      w.e = shim.streamServerInt(shim.server, w, &info, _{{.Service}}_{{.Name}}_Handler)
     } ()
     return w, nil
   }

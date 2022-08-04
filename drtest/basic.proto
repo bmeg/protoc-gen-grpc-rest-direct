@@ -30,6 +30,14 @@ service DirectService {
       };
     }
 
+    rpc QueryPostStreamOut(InputMessage) returns (stream OutputMessage) {
+      option (google.api.http) = {
+        post: "/v1/post-stream-out",
+        body: "*"
+      };
+    }
+
+
 
     rpc QueryStreamOut(InputMessage) returns (stream OutputMessage) {
       option (google.api.http) = {
