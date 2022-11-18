@@ -16,8 +16,11 @@ user request via HTTP is:
  6. Deserialized from protobuf to native GO structure
  7. Passed to server function
 
-
 `protoc-gen-grcp-rest-direct` skips most of that process by building a direct
 client/server connection stub, to that the grpc-gateway HTTP server can directly
 call the GRPC server methods, without going through the additional
 serialize/network/deserialize steps.
+
+## Limitations
+ - Doesn't map Streaming Input/Output (but neither does GRPC Gateway)
+ - Limited server options (has unary/stream interceptors)

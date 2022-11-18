@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package drtest;
+
+option go_package = "github.com/bmeg/protoc-gen-grcp-rest-direct/drtest";
+
+import "google/api/annotations.proto";
+
+
+message InputMessage {
+	string message = 1;
+}
+
+message OutputMessage {
+    string message = 1;
+}
+
+
+service DirectService {
+    rpc QueryGet(InputMessage) returns (OutputMessage) {
+      option (google.api.http) = {
+        get: "/v1/get/{message}"
+      };
+    }
+
+    rpc QueryPost(InputMessage) returns (OutputMessage) {
+      option (google.api.http) = {
+        post: "/v1/post",
+        body: "*"
+      };
+    }
+
+    rpc QueryPostStreamOut(InputMessage) returns (stream OutputMessage) {
+      option (google.api.http) = {
+        post: "/v1/post-stream-out",
+        body: "*"
+      };
+    }
+
+
+
+    rpc QueryStreamOut(InputMessage) returns (stream OutputMessage) {
+      option (google.api.http) = {
+        get: "/v1/stream-out/{message}"
+      };
+    }
+
+
+    rpc QueryStreamIn(stream InputMessage) returns (OutputMessage) {
+      option (google.api.http) = {
+        post: "/v1/stream-in"
+      };
+    }
+
+}
