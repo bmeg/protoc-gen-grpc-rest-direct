@@ -1,4 +1,4 @@
-module github.com/bmeg/protoc-gen-grcp-rest-direct
+module github.com/bmeg/protoc-gen-grpc-rest-direct
 
 go 1.18
 

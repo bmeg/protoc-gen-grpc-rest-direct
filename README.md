@@ -1,5 +1,5 @@
 
-# protoc-gen-grcp-rest-direct
+# protoc-gen-grpc-rest-direct
 
 A protoc code generator that creates stub wrappers to directly connect
 grpc http gateway code to GRPC services.
@@ -16,7 +16,7 @@ user request via HTTP is:
  6. Deserialized from protobuf to native GO structure
  7. Passed to server function
 
-`protoc-gen-grcp-rest-direct` skips most of that process by building a direct
+`protoc-gen-grpc-rest-direct` skips most of that process by building a direct
 client/server connection stub, to that the grpc-gateway HTTP server can directly
 call the GRPC server methods, without going through the additional
 serialize/network/deserialize steps.
